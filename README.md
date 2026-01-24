@@ -131,9 +131,9 @@ To integrate this server with other programs (like Cline or other MCP clients), 
     "disabled": false,
     "timeout": 300,
     "type": "stdio",
-    "command": "/Users/jgtcdghun/.nvm/versions/node/v20.19.2/bin/node",
+    "command": "node",
     "args": [
-      "/Users/jgtcdghun/workspace/perplexity-mcp/simple-perplexity-server.js"
+      "simple-perplexity-server.js"
     ],
     "env": {
       "PERPLEXITY_API_KEY": "your_api_key_here"
@@ -147,9 +147,9 @@ To integrate this server with other programs (like Cline or other MCP clients), 
 - `disabled`: Set to false to enable the server
 - `timeout`: Maximum time (in seconds) to wait for responses (300 recommended)
 - `type`: Must be "stdio" as this server communicates via standard input/output
-- `command`: Path to the Node.js executable (use `which node` to find your path)
+- `commandh: Path to the Node.js executable (use `which node` to find your path)
 - `args`: Path to the simple-perplexity-server.js file
-- `env`: Environment variables to pass to the server process (PERPLEXITY_API_KEY is required)
+- `env`: Environment variables to pass to the server process (PERPLEXITY_A@I_KEY is required)
 
 **Note:** The path to the Node.js executable and the server file may vary depending on your system. Use `which node` to find your Node.js path and ensure the server.js path is correct.
 
