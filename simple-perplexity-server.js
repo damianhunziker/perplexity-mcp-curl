@@ -2,11 +2,39 @@
 
 const { spawn } = require('child_process');
 const readline = require('readline');
+const fs = require('fs');
+const path = require('path');
+
+// Load environment variables from .env file
+function loadEnvFile() {
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    const lines = envContent.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const equalsIndex = trimmed.indexOf('=');
+        if (equalsIndex !== -1) {
+          const key = trimmed.substring(0, equalsIndex).trim();
+          const value = trimmed.substring(equalsIndex + 1).trim();
+          // Remove quotes if present
+          const cleanValue = value.replace(/^['"]|['"]$/g, '');
+          process.env[key] = cleanValue;
+        }
+      }
+    }
+  }
+}
+
+// Load .env file
+loadEnvFile();
 
 // Retrieve the Perplexity API key from environment variables
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 if (!PERPLEXITY_API_KEY) {
   console.error("Error: PERPLEXITY_API_KEY environment variable is required");
+  console.error("Please create a .env file with PERPLEXITY_API_KEY=your_key_here");
   process.exit(1);
 }
 
@@ -15,6 +43,8 @@ if (!PERPLEXITY_API_KEY) {
  */
 function curlRequest(endpoint, body) {
   return new Promise((resolve, reject) => {
+    // Handle v1/responses endpoint (no leading slash needed)
+    // For /v1/responses, we need to include the v1/ prefix in the endpoint
     const url = `https://api.perplexity.ai/${endpoint}`;
     const curlArgs = [
       '-s',
@@ -136,6 +166,56 @@ async function processMessage(message) {
                 },
                 required: ['query']
               }
+            },
+            {
+              name: 'perplexity_research',
+              title: 'Research with Perplexity',
+              description: 'Perform deep research using Perplexity AI with web search capabilities',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  input: { type: 'string', description: 'The research question or topic' },
+                  preset: {
+                    type: 'string',
+                    enum: ['fast-search', 'pro-search', 'deep-research'],
+                    description: 'Preset configuration for research depth'
+                  },
+                  model: {
+                    type: 'string',
+                    description: 'Model ID in provider/model format (e.g., "openai/gpt-5.2")'
+                  },
+                  max_steps: {
+                    type: 'number',
+                    minimum: 1,
+                    maximum: 10,
+                    description: 'Maximum number of research loop steps (1-10)'
+                  },
+                  max_output_tokens: {
+                    type: 'number',
+                    minimum: 1,
+                    description: 'Maximum tokens to generate'
+                  },
+                  instructions: {
+                    type: 'string',
+                    description: 'System instructions for the model'
+                  },
+                  tools: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        type: {
+                          type: 'string',
+                          enum: ['web_search', 'fetch_url']
+                        }
+                      },
+                      required: ['type']
+                    },
+                    description: 'Tools available to the model (web_search, fetch_url)'
+                  }
+                },
+                required: ['input']
+              }
             }
           ]
         }
@@ -228,6 +308,108 @@ async function processMessage(message) {
           id: requestId,
           result: {
             content: [{ type: 'text', text: formattedResults }]
+          }
+        });
+      }
+      
+      if (name === 'perplexity_research') {
+        const { input, preset, model, max_steps, max_output_tokens, instructions, tools } = args;
+        
+        // Debug logging
+        console.error(`DEBUG: perplexity_research called with preset=${preset}, forcing 'deep-research'`);
+        
+        if (!input || typeof input !== 'string') {
+          throw new Error('input parameter is required and must be a string');
+        }
+        
+        const body = {
+          input: input,
+          preset: 'deep-research'  // Always use deep-research
+        };
+        
+        if (model) {
+          body.model = model;
+        }
+        
+        if (max_steps) {
+          body.max_steps = max_steps;
+        }
+        
+        if (max_output_tokens) {
+          body.max_output_tokens = max_output_tokens;
+        }
+        
+        if (instructions) {
+          body.instructions = instructions;
+        }
+        
+        if (tools) {
+          body.tools = tools;
+        }
+        
+        const data = await curlRequest('v1/responses', body);
+        
+        // Format the research response
+        let formattedResponse = '';
+        
+        if (data.output && Array.isArray(data.output)) {
+          // Extract text content from output
+          data.output.forEach((outputItem) => {
+            if (outputItem.type === 'message' && outputItem.content && Array.isArray(outputItem.content)) {
+              outputItem.content.forEach((content) => {
+                if (content.type === 'output_text' && content.text) {
+                  formattedResponse += content.text + '\n\n';
+                }
+              });
+            }
+            
+            // Include search results if available
+            if (outputItem.type === 'search_results' && outputItem.results) {
+              formattedResponse += 'Search Results:\n';
+              outputItem.results.forEach((result, index) => {
+                formattedResponse += `${index + 1}. **${result.title}**\n`;
+                if (result.url) {
+                  formattedResponse += `   URL: ${result.url}\n`;
+                }
+                if (result.snippet) {
+                  formattedResponse += `   ${result.snippet}\n`;
+                }
+                formattedResponse += '\n';
+              });
+            }
+            
+            // Include fetch URL results if available
+            if (outputItem.type === 'fetch_url_results' && outputItem.contents) {
+              formattedResponse += 'Fetched URLs:\n';
+              outputItem.contents.forEach((content, index) => {
+                formattedResponse += `${index + 1}. **${content.title}**\n`;
+                if (content.snippet) {
+                  formattedResponse += `   ${content.snippet}\n`;
+                }
+                formattedResponse += '\n';
+              });
+            }
+          });
+        }
+        
+        // Add usage information if available
+        if (data.usage) {
+          formattedResponse += '---\n';
+          formattedResponse += `Usage: ${data.usage.total_tokens} tokens\n`;
+          if (data.usage.cost && data.usage.cost.total_cost !== undefined) {
+            formattedResponse += `Cost: $${data.usage.cost.total_cost.toFixed(6)}\n`;
+          }
+        }
+        
+        if (!formattedResponse.trim()) {
+          formattedResponse = 'No research results found';
+        }
+        
+        return JSON.stringify({
+          jsonrpc: '2.0',
+          id: requestId,
+          result: {
+            content: [{ type: 'text', text: formattedResponse }]
           }
         });
       }
