@@ -170,7 +170,7 @@ async function processMessage(message) {
             {
               name: 'perplexity_research',
               title: 'Research with Perplexity',
-              description: 'Perform deep research using Perplexity AI with web search capabilities',
+              description: 'Perform deep research using Perplexity AI with web search capabilities. This is expensive. ONLY USE WHEN EXPLICITLY DEMANDED or strongly necessary. Use perplexity_ask and brave and url readers first.',
               inputSchema: {
                 type: 'object',
                 properties: {
